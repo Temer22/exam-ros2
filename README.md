@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+
+import rclpy
+from rclpy.node import Node
+from turtlesim.msg import Pose
+from geometry_msgs.msg import Twist
+from std_msgs.msg import Float32
+from assignment1_rt.srv import ModifyThreshold
+import math
+
+
+class DistanceNode(Node):
+    def __init__(self):
+        super().__init__('distance_node')
+
+        # Initial distance threshold
+        self.threshold = 1.0
+
+        self.pose1 = None
+        self.pose2 = None
+
+        # Subscribers
+        self.create_subscription(Pose, '/turtle1/pose', self.pose1_callback, 10)
+        self.create_subscription(Pose, '/turtle2/pose', self.pose2_callback, 10)
+
+        # Publishers
+        self.pub_distance = self.create_publisher(Float32, '/turtle_distance', 10)
+        self.pub_stop1 = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
+        self.pub_stop2 = self.create_publisher(Twist, '/turtle2/cmd_vel', 10)
+
+        # Service to modify threshold
+        self.create_service(
+            ModifyThreshold,
+            '/modify_threshold',
+            self.modify_threshold_callback
+        )
+
+        # Timer
+        self.timer = self.create_timer(0.1, self.check_distance)
+
+    def pose1_callback(self, msg):
+        self.pose1 = msg
+
+    def pose2_callback(self, msg):
+        self.pose2 = msg
+
+    def check_distance(self):
+        if self.pose1 is None or self.pose2 is None:
+            return
+
+        dx = self.pose1.x - self.pose2.x
+        dy = self.pose1.y - self.pose2.y
+        distance = math.sqrt(dx * dx + dy * dy)
+
+        # Publish distance
+        self.pub_distance.publish(Float32(data=distance))
+
+        # Stop turtles if too close
+        if distance < self.threshold:
+            self.stop_turtles()
+
+        # Stop turtles if near boundaries
+        if self.out_of_bounds(self.pose1):
+            self.stop_turtle(self.pub_stop1)
+
+        if self.out_of_bounds(self.pose2):
+            self.stop_turtle(self.pub_stop2)
+
+    def out_of_bounds(self, pose):
+        return pose.x < 1.0 or pose.x > 10.0 or pose.y < 1.0 or pose.y > 10.0
+
+    def stop_turtle(self, publisher):
+        msg = Twist()
+        publisher.publish(msg)
+
+    def stop_turtles(self):
+        self.stop_turtle(self.pub_stop1)
+        self.stop_turtle(self.pub_stop2)
+
+    def modify_threshold_callback(self, request, response):
+        if request.command == "increase":
+            self.threshold += request.value
+            response.success = True
+
+        elif request.command == "decrease":
+            self.threshold -= request.value
+            if self.threshold < 0.0:
+                self.threshold = 0.0
+            response.success = True
+
+        else:
+            response.success = False
+
+        return response
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = DistanceNode()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
