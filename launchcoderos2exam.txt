@@ -1,0 +1,16 @@
+from launch import LaunchDescription
+from launch_ros.actions import Node
+
+def generate_launch_description():
+    return LaunchDescription([
+        Node(
+            package='assignment1_gazebo',
+            executable='ui_node',
+            output='screen'
+        ),
+        Node(
+            package='assignment1_gazebo',
+            executable='distance_node',
+            output='screen'
+        ),
+    ])
